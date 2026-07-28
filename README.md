@@ -1,4 +1,4 @@
-# ROSE - Radial velocity Opposition Surge Emulator 
+# ROSE - Radial velocity Opposition Surge Effect
 
 ROSE is designed to produce a time series of radial velocities with the opposition surge of Europa as the Earth transits the Sun as seen from Europa. 
 
