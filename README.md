@@ -29,7 +29,7 @@ include("src/GPUAllocs.jl")
 
 get_kernels()
 
-# Observer Coordinates (Earth)
+# Observer Coordinates (NEID)
 obs_lat = 31.9583 
 obs_long = -111.5967  
 alt = 2.090
@@ -79,9 +79,9 @@ time_stamps = range(utc2et("2026-01-05T00:00:00.0"), utc2et.("2026-01-27T00:00:0
 
 projected_RV_gpu(time_stamps, 1)
 ```
-![RVcurve](./figures/OSfigure.png)
+![RVcurve](./figures/OSfigure.pdf)
 
 ## Included Information
 
-The Gonzalez et al. 2026b results from hpfserval and neidserval, along with the NEID order-by-order results, are included under the data directory. The script to generate the figures from the manuscript is found under figures/RVs, which includes the simulated RVs when using various opposition surge parameters. The example above to generate the radial velocities is expanded in scripts/europa_RV.jl for the opposition surge parameter fits from MCMC runs. The MCMC scripts are included under scripts. 
+The Gonzalez et al. 2026b results from hpfserval and neidserval, along with the NEID order-by-order results, are included under data. The script to generate the figures from the manuscript is found under figures/RVs, which includes the simulated RVs when using various opposition surge parameters. The example above to generate the radial velocities is expanded in scripts/europa_RV.jl for the opposition surge parameter fits from MCMC runs. The MCMC scripts are included under scripts. 
 
