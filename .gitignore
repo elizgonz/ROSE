@@ -2,13 +2,4 @@
 *.bpc
 *.tls
 *.tpc
-*.jld2 
-*.png
-*.gif
 *.tf
-*.pdf
-*.fits
-*.fits.Z
-*.pkl
-*.tar
-*.out
