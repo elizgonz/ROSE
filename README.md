@@ -14,7 +14,7 @@ cd ROSE
 julia
 ```
 
-## Example
+## Example: Europa Radial Velocity with Shadow Hiding Opposition Surge on 2026 January 10 Earth Transit
 
 ```julia
 using SPICE
@@ -79,7 +79,7 @@ time_stamps = range(utc2et("2026-01-05T00:00:00.0"), utc2et.("2026-01-27T00:00:0
 
 projected_RV_gpu(time_stamps, 1)
 ```
-![RVcurve](./figures/OSfigure.pdf)
+![RVcurve](figures/OSfigure.pdf)
 
 ## Included Information
 
