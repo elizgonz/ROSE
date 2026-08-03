@@ -13,6 +13,31 @@ import h5py
 from astropy.io import fits
 import matplotlib.dates as mdates
 
+def compute_rms_errors(bjd, rv, rv_err, threshold=0.4):
+    """
+    For each nightly visit, fit a line (mean + slope), compute RMS of residuals,
+    and return new per-observation errors = sqrt(RMS^2 + formal_err^2).
+    threshold=0.4 days separates nights (~9.6 hours gap).
+    """
+    groups = group_tracks(bjd, threshold=threshold)
+    new_err = np.zeros(len(rv))
+    for g in np.unique(groups):
+        idx = np.where(groups == g)[0]
+        bjd_g = bjd[idx]
+        rv_g  = rv[idx]
+        err_g = rv_err[idx]
+        if len(idx) < 3:
+            # not enough points to fit a line, just use formal errors
+            new_err[idx] = err_g
+            continue
+        # weighted line fit
+        w = 1.0 / err_g**2
+        coeffs = np.polyfit(bjd_g - np.mean(bjd_g), rv_g, deg=1, w=w)
+        residuals = rv_g - np.polyval(coeffs, bjd_g - np.mean(bjd_g))
+        rms = np.sqrt(np.mean(residuals**2))
+        new_err[idx] = np.sqrt(rms**2 + err_g**2)
+    return new_err
+
 def jld2_read(jld2_file, variable, index):
     array = jld2_file[variable[index]][()]
     array = np.array(array)
@@ -150,10 +175,17 @@ rvs = rvs[mask]
 rv_err = rv_err[mask]
 bjd = bjd[mask]
 
+# Update HPF errors to reflect nightly scatter
+rv_err = compute_rms_errors(
+    bjd.values,
+    rvs.values,
+    rv_err.values
+)
+
 mask_dates = ~(((Time(bjd, format='jd')).to_datetime() >= datetime(2026, 1, 1)) & ((Time(bjd, format='jd')).to_datetime() <= datetime(2026, 1, 13)))
-label2="HPF Unbinned: $\sigma$={:0.2f}m/s, Med(errorbar)={:0.2f}m/s".format(np.nanstd(rvs[mask_dates]),np.nanmedian(rv_err[mask_dates]))
 nbjd, nRV, nRV_err = bin_rvs_by_track(bjd[mask_dates],rvs[mask_dates],rv_err[mask_dates],0.5) 
-label3="HPF Binned: $\sigma$={:0.2f}m/s, Med(errorbar)={:0.2f}m/s".format(np.nanstd(nRV),np.nanmedian(nRV_err))
+label2="HPF Unbinned: RMS={:0.2f}m/s, Median(errorbar)={:0.2f}m/s".format(np.sqrt(np.nanmean((rvs[mask_dates] - np.nanmean(rvs[mask_dates]))**2)), np.nanmedian(rv_err[mask_dates]))
+label3="HPF Binned: RMS={:0.2f}m/s, Median(errorbar)={:0.2f}m/s".format(np.sqrt(np.nanmean((nRV - np.nanmean(nRV))**2)), np.nanmedian(nRV_err))
 
 nbjd, nRV, nRV_err = bin_rvs_by_track(bjd,rvs,rv_err,0.5) 
 ax1.errorbar((Time(bjd, format='jd')).to_datetime(),rvs,rv_err,marker="h",lw=0,elinewidth=0.5,
@@ -177,10 +209,17 @@ rvs_neid = df_neid["rv"][12:-1]
 rv_err_neid = df_neid["e_rv"][12:-1]
 bjd_neid = df_neid["bjd"][12:-1]
 
+# Update NEID errors to reflect nightly scatter
+rv_err_neid = compute_rms_errors(
+    bjd_neid.values,
+    rvs_neid.values,
+    rv_err_neid.values
+)
+
 mask_dates = ~(((Time(bjd_neid, format='jd')).to_datetime() >= datetime(2026, 1, 9)) & ((Time(bjd_neid, format='jd')).to_datetime() <= datetime(2026, 1, 13)))
-label4="NEID Unbinned: $\sigma$={:0.2f}m/s, Med(errorbar)={:0.2f}m/s".format(np.nanstd(rvs_neid[mask_dates]),np.nanmedian(rv_err_neid[mask_dates]))
 nbjd, nRV, nRV_err = bin_rvs_by_day(bjd_neid[mask_dates],rvs_neid[mask_dates],rv_err_neid[mask_dates]) 
-label5="NEID Binned: $\sigma$={:0.2f}m/s, Med(errorbar)={:0.2f}m/s".format(np.nanstd(nRV),np.nanmedian(nRV_err))
+label4="NEID Unbinned: RMS={:0.2f}m/s, Median(errorbar)={:0.2f}m/s".format(np.sqrt(np.nanmean((rvs_neid[mask_dates] - np.nanmean(rvs_neid[mask_dates]))**2)), np.nanmedian(rv_err_neid[mask_dates]))
+label5="NEID Binned: RMS={:0.2f}m/s, Median(errorbar)={:0.2f}m/s".format(np.sqrt(np.nanmean((nRV - np.nanmean(nRV))**2)), np.nanmedian(nRV_err))
 
 nbjd, nRV, nRV_err = bin_rvs_by_day(bjd_neid,rvs_neid,rv_err_neid) 
 ax1.errorbar((Time(bjd_neid, format='jd')).to_datetime(),rvs_neid,rv_err_neid,marker="h",lw=0,elinewidth=0.5,
