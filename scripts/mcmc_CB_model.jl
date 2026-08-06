@@ -14,6 +14,8 @@ using Serialization
 using MCMCChains
 
 orders = [20,22,23,24,25,26,27,28,29,30,31,32,33,36,37,38,39,41,42,43,44,45,46,48,49,50,54,55,56,57,58,59,62,63,64,72,73,74,91,94]
+wavelengths = [4012.338861810625, 4065.4845352620687, 4092.5889458867427, 4120.056656758336, 4147.896340182007, 4176.114670163549, 4204.719253588902, 4233.718408904378, 4263.118683657377, 4292.933326587802, 4323.166218217185, 4353.82827059154, 4384.928162394974, 4480.951359801634, 4513.900515086146, 4547.337859551167, 4581.274233569078, 4650.689434914498, 4686.19211540847, 4722.240524196751, 4758.848222153147, 4796.027842766245, 4833.7925364793955, 4911.135240469596, 4950.741881972264, 4990.992794881698, 5158.761280269197, 5202.480473364398, 5246.947034189537, 5292.180241532383, 5338.200128507048, 5385.027399821762, 5530.57141372899, 5580.850191469802, 5632.051637984013, 6078.161902948444, 6138.944361995399, 6200.954822586068, 7486.53469912381, 7770.835960089047]
+wave_ref = median(wavelengths) 
 data_path = "../data/simulated_allocs"
 
 # -----------------------------
@@ -141,7 +143,7 @@ end
 function model_all_orders(
     B_CB,
     h_CB_orders,
-    dhdo,
+    dhdw,
     all_data,
     orders
 )
@@ -153,7 +155,7 @@ function model_all_orders(
 
         order_data = all_data[i]
 
-        h_cb_eff = h_CB_orders * exp(dhdo * ord)
+        h_cb_eff = h_CB_orders + dhdw * (wavelengths[i] - wave_ref)
 
         rv_model_arr = Vector{T}(undef, length(order_data))
 
@@ -191,12 +193,12 @@ end
 
     h_CB = exp(log_h_CB)
 
-    dhdo ~ Normal(0, 0.01)
+    dhdw ~ Normal(0, 1.0)
 
     model_rv = model_all_orders(
         B_CB,
         h_CB,
-        dhdo,
+        dhdw,
         all_data,
         orders
     )
@@ -253,7 +255,7 @@ all_chains = Chains[]
 ldf = DynamicPPL.LogDensityFunction(model)
 
 # Fresh start
-current_init = DynamicPPL.InitFromVector([0.5, 0.2, -0.01], ldf)
+current_init = DynamicPPL.InitFromVector([0.5, 0.2, 0.1], ldf)
 
 # -----------------------------
 # SAMPLING LOOP
