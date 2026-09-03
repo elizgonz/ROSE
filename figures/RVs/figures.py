@@ -12,6 +12,61 @@ from brokenaxes import brokenaxes
 import h5py
 from astropy.io import fits
 import matplotlib.dates as mdates
+from scipy.interpolate import CubicSpline
+import warnings
+import matplotlib.colors as mcolors
+import re
+
+def calculate_rv_chisquare(jd_pred, rv_pred, jd_obs, rv_obs, rv_obs_err):
+    """
+    Interpolates predicted Radial Velocities (RVs) to observed timestamps using 
+    a cubic spline, then calculates the chi-square value.
+
+    Parameters:
+    -----------
+    jd_pred : array-like
+        Julian dates of the predicted RVs.
+    rv_pred : array-like
+        Predicted RV values corresponding to jd_pred.
+    jd_obs : array-like
+        Julian dates of the observed RVs.
+    rv_obs : array-like
+        Observed RV values.
+
+    Returns:
+    --------
+    chi_square : float
+        The computed chi-square value.
+    rv_pred_interp : ndarray
+        The predicted RVs interpolated at the jd_obs timestamps.
+    """
+    # Convert to numpy arrays for easier manipulation
+    jd_pred = np.asarray(jd_pred)
+    rv_pred = np.asarray(rv_pred)
+    jd_obs = np.asarray(jd_obs)
+    rv_obs = np.asarray(rv_obs)
+    
+    # CubicSpline requires the independent variable to be strictly increasing
+    sort_idx = np.argsort(jd_pred)
+    jd_pred_sorted = jd_pred[sort_idx]
+    rv_pred_sorted = rv_pred[sort_idx]
+
+    # Check for extrapolation
+    if np.min(jd_obs) < np.min(jd_pred_sorted) or np.max(jd_obs) > np.max(jd_pred_sorted):
+        warnings.warn("Some observed timestamps fall outside the range of predicted timestamps. "
+                      "Cubic spline will extrapolate, which may lead to unreliable RVs.")
+
+    # Create the cubic spline interpolation function
+    cs = CubicSpline(jd_pred_sorted, rv_pred_sorted)
+
+    # Evaluate the spline at the observed timestamps during opposition surge
+    mask_dates = (((Time(jd_obs, format='jd')).to_datetime() >= datetime(2026, 1, 9)) & ((Time(jd_obs, format='jd')).to_datetime() <= datetime(2026, 1, 13)))
+    rv_pred_interp = cs(jd_obs[mask_dates])
+
+    # Calculate the chi-square
+    chi_square = np.sum(((rv_obs[mask_dates] - rv_pred_interp) / rv_obs_err[mask_dates]) ** 2)
+
+    return chi_square, rv_pred_interp
 
 def compute_rms_errors(bjd, rv, rv_err, threshold=0.4):
     """
@@ -162,7 +217,6 @@ def bin_rvs_by_day(bjd, rv, rv_err):
         bin_err[k] = 1.0 / np.sqrt(np.sum(w))  # propagated uncertainty
 
     return bin_bjd, bin_rv, bin_err
-
 
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10,6), sharey=True, dpi=600, gridspec_kw={'wspace': 0.02})
 
@@ -377,11 +431,11 @@ for i in time_extended:
     dt = datetime.strptime(i.decode("utf-8"), "%Y-%m-%dT%H:%M:%S.%f")
     model_time.append((Time(dt)).jd)
 
-SH_SB_arr = jld2_read(SH_SB_file, SH_SB, 30)
-CB_SB_arr = jld2_read(CB_SB_file, CB_SB, 30)
+SH_SB_arr_fit = jld2_read(SH_SB_file, SH_SB, 30)
+CB_SB_arr_fit = jld2_read(CB_SB_file, CB_SB, 30)
 
-plt.plot((Time(model_time, format='jd')).to_datetime(), SH_SB_arr, label = "SH", color = 'k', zorder=5) 
-plt.plot((Time(model_time, format='jd')).to_datetime(), CB_SB_arr, label = "CB", color = 'orange', zorder=6) 
+plt.plot((Time(model_time, format='jd')).to_datetime(), SH_SB_arr_fit, label = "SH", color = 'k', zorder=5) 
+plt.plot((Time(model_time, format='jd')).to_datetime(), CB_SB_arr_fit, label = "CB", color = 'orange', zorder=6) 
 
 nbjd, nRV, nRV_err = bin_rvs_by_track(bjd,rvs,rv_err,0.5) 
 ax1.errorbar((Time(bjd, format='jd')).to_datetime(),rvs,rv_err,marker="h",lw=0,elinewidth=0.5,
@@ -411,8 +465,8 @@ for j, (x1, x2, y1, y2, pos) in enumerate(zoom_regions):
     axins = ax1.inset_axes(pos)
 
     # --- plot SAME data as main plot ---
-    axins.plot(model_dt, SH_SB_arr, color = 'k', zorder=5)
-    axins.plot(model_dt, CB_SB_arr, color = 'orange', zorder=6)
+    axins.plot(model_dt, SH_SB_arr_fit, color = 'k', zorder=5)
+    axins.plot(model_dt, CB_SB_arr_fit, color = 'orange', zorder=6)
 
     axins.errorbar(data_dt_neid, rvs_neid, rv_err_neid, fmt='h', markersize=4, color = "blue", zorder=1)
     axins.errorbar(data_dt, rvs, rv_err, fmt='h', markersize=4, color = "pink", zorder=2)
@@ -441,3 +495,83 @@ ax1.axvspan(start_date, end_date, color='gray', alpha=0.4)
 plt.tight_layout()
 plt.ylim(-40,35)
 plt.savefig("figure4.pdf")
+
+print("DV97 SH: {}".format(calculate_rv_chisquare(model_time, DV_iso_2P_arr, bjd_neid, rvs_neid, rv_err_neid)[0]))
+print("SB03 SH: {}".format(calculate_rv_chisquare(model_time, SH_SB_arr, bjd_neid, rvs_neid, rv_err_neid)[0]))
+print("SB03 CB: {}".format(calculate_rv_chisquare(model_time, CB_SB_arr, bjd_neid, rvs_neid, rv_err_neid)[0]))
+print("MCMC SH: {}".format(calculate_rv_chisquare(model_time, SH_SB_arr_fit, bjd_neid, rvs_neid, rv_err_neid)[0]))
+print("MCMC CB: {}".format(calculate_rv_chisquare(model_time, CB_SB_arr_fit, bjd_neid, rvs_neid, rv_err_neid)[0]))
+
+# def plot_order_rvs(rv_csv_path, err_csv_path, timestamps):
+#     """
+#     Reads RVs and errors from CSV files and plots them color-coded by order number.
+#     Lower orders are blue, higher orders are red.
+#     """
+#     # Load the CSV files
+#     rv_df = pd.read_csv(rv_csv_path)
+#     err_df = pd.read_csv(err_csv_path)
+    
+#     # Extract order numbers from column names (e.g., 'order_20' -> 20)
+#     # This assumes columns have numbers in their names
+#     order_info = []
+#     for col in rv_df.columns:
+#         match = re.search(r'\d+', col)
+#         if match and col in err_df.columns:
+#             order_info.append({
+#                 'col_name': col,
+#                 'order_num': 173 - int(match.group())
+#             })
+            
+#     if not order_info:
+#         raise ValueError("Could not find any columns with numbers in their names in both CSVs.")
+        
+#     # Sort by order number just to be organized
+#     order_info = sorted(order_info, key=lambda x: x['order_num'])
+    
+#     # Setup the colormap (coolwarm goes from blue to red)
+#     min_order = min(info['order_num'] for info in order_info)
+#     max_order = max(info['order_num'] for info in order_info)
+    
+#     cmap = plt.get_cmap('coolwarm')
+#     norm = mcolors.Normalize(vmin=min_order, vmax=max_order)
+    
+#     # Create the plot
+#     fig, ax = plt.subplots(figsize=(10, 6))
+    
+#     for info in order_info:
+#         col = info['col_name']
+#         order_num = info['order_num']
+
+#         if order_num != 173:
+        
+#             # Get the color for this specific order
+#             color = cmap(norm(order_num))
+            
+#             # Plot the data
+#             ax.errorbar(
+#                 (Time(timestamps, format='jd')).to_datetime()[12:-1], 
+#                 rv_df[col][12:-1], 
+#                 yerr=err_df[col][12:-1], 
+#                 fmt='o',          # Circular markers
+#                 linestyle='',    # Connect with lines (change to '' if you just want points)
+#                 color=color, 
+#                 alpha=0.6,        # Slight transparency so overlapping points are visible
+#                 markersize=4
+#             )
+        
+#     # Formatting
+#     ax.set_xlabel('Time (Julian Date)', fontsize=12)
+#     ax.set_ylabel('Radial Velocity (m/s)', fontsize=12)
+#     ax.set_title('Order-by-Order Radial Velocities', fontsize=14)
+#     ax.grid(True, alpha=0.3)
+    
+#     # Add a colorbar instead of a massive legend
+#     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+#     sm.set_array([])
+#     cbar = fig.colorbar(sm, ax=ax)
+#     cbar.set_label('Echelle Order Number', fontsize=12)
+    
+#     plt.tight_layout()
+#     plt.savefig("figure5.pdf")
+
+# plot_order_rvs("../../data/NEID_order_rv.csv", "/storage/home/efg5335/work/sw/neidserval/scripts/order_rv_err.csv", df_neid["bjd"])
